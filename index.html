@@ -2,147 +2,224 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Side Knock Detector</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Knock Game</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
-            padding: 20px;
-            background-color: #f0f0f0;
-            transition: background-color 0.1s;
+            background-color: #222;
+            color: #eee;
+            touch-action: none; /* Prevents zooming on taps */
+            overflow: hidden;
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+
+        #game-container {
+            position: relative;
+            width: 90%;
+            max-width: 400px;
+            height: 300px;
+            margin: 20px auto;
+            background-color: #333;
+            border: 3px solid #555;
+            border-radius: 10px;
+            overflow: hidden;
         }
-        h1 { margin-top: 0; }
-        .data-box {
-            font-family: monospace;
-            font-size: 1.2rem;
-            margin: 10px 0;
-            padding: 10px;
-            background: #eee;
-            border-radius: 8px;
+
+        /* The stationary Hammer area */
+        #hammer-zone {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 80px;
+            /* Visual representation of hammer head */
+            background-color: #888;
+            border-bottom: 5px solid #666;
+            z-index: 2;
+            transition: transform 0.1s ease-in;
         }
-        #status { color: #666; font-style: italic; margin-bottom: 20px;}
-        button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            font-size: 1rem;
-            border-radius: 8px;
-            cursor: pointer;
+
+        /* Animation class added when a knock happens */
+        .swinging {
+            transform: translateX(-50%) translateY(20px) scale(1.1) !important;
+            background-color: #aaa !important;
         }
-        .knock-log {
+
+        /* The moving target sprite */
+        #target-sprite {
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            width: 50px;
+            height: 50px;
+            background-color: #ff4757; /* Red */
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        /* Visual feedback classes */
+        .hit-success { background-color: #2ed573 !important; } /* Green */
+        .hit-fail { background-color: #747d8c !important; } /* Grey out */
+
+        #ui-layer {
             margin-top: 20px;
-            text-align: left;
-            max-height: 200px;
-            overflow-y: auto;
-            border-top: 2px solid #ddd;
-            padding-top: 10px;
         }
-        .knocked {
-            background-color: #ff4444 !important; /* Red flash on knock */
+        
+        button {
+            background-color: #3742fa;
+            color: white; border: none; padding: 15px 30px;
+            font-size: 1.2rem; border-radius: 8px; cursor: pointer;
         }
+
+        #score-board { font-size: 1.5rem; font-weight: bold; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>Knock Detector</h1>
-    <p id="status">Sensors stopped. Tap Start.</p>
-    
-    <button id="startBtn" onclick="startSensors()">Start Listening</button>
+    <h1>Knock to Hit!</h1>
 
-    <div class="data-box">
-        X (Side): <span id="x-val">0</span> m/s²<br>
-        Y (Vertical): <span id="y-val">0</span> m/s²<br>
-        Z (Face): <span id="z-val">0</span> m/s²
+    <div id="game-container">
+        <div id="hammer-zone"></div>
+        <div id="target-sprite"></div>
     </div>
 
-    <h3>Event Log:</h3>
-    <div class="knock-log" id="log"></div>
-</div>
+    <div id="ui-layer">
+        <div id="score-board">Score: 0</div>
+        <p id="status">Hold phone horizontally in portrait mode.</p>
+        <button id="startBtn" onclick="startGame()">START GAME</button>
+    </div>
 
 <script>
-    // Threshold: How hard you have to knock (m/s^2). 
-    // 15 is usually a firm tap. Increase to 20 if too sensitive.
-    const KNOCK_THRESHOLD = 15; 
-    let lastKnockTime = 0;
+    // --- Configuration ---
+    const KNOCK_THRESHOLD = 18; // Slightly higher threshold for gameplay to avoid misfires
+    const KNOCK_COOLDOWN = 400; // ms between swings
+    const SPRITE_SPEED = 5;     // Speed of movement
 
-    function startSensors() {
-        // Request permission (Required for iOS 13+, good practice for Android)
+    // --- Game State Variables ---
+    let isPlaying = false;
+    let score = 0;
+    let lastKnockTime = 0;
+    
+    // Sprite Movement Variables
+    let spritePos = 0;
+    let moveDirection = 1; // 1 = right, -1 = left
+    let containerWidth = 0;
+    let spriteWidth = 0;
+    let animationFrameId;
+
+    // DOM Elements
+    const sprite = document.getElementById('target-sprite');
+    const hammer = document.getElementById('hammer-zone');
+    const gameContainer = document.getElementById('game-container');
+    const scoreDisplay = document.getElementById('score-board');
+    const statusText = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
+
+    // --- Game Loop (Movement) ---
+    function gameLoop() {
+        if (!isPlaying) return;
+
+        // Update dimensions in case of resize
+        containerWidth = gameContainer.clientWidth;
+        spriteWidth = sprite.clientWidth;
+
+        // Calculate next position
+        spritePos += (SPRITE_SPEED * moveDirection);
+
+        // Bounce off walls
+        // Right wall check
+        if (spritePos + spriteWidth >= containerWidth) {
+            spritePos = containerWidth - spriteWidth;
+            moveDirection = -1;
+        } 
+        // Left wall check
+        else if (spritePos <= 0) {
+            spritePos = 0;
+            moveDirection = 1;
+        }
+
+        // Apply position
+        sprite.style.left = spritePos + 'px';
+
+        // Request next frame
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+
+    // --- Sensor & Input Handling ---
+    function startGame() {
+        // Request permissions (iOS requirement standard)
         if (typeof DeviceMotionEvent.requestPermission === 'function') {
             DeviceMotionEvent.requestPermission()
                 .then(response => {
                     if (response === 'granted') {
-                        window.addEventListener('devicemotion', handleMotion);
-                        document.getElementById("status").innerText = "Sensors Active! Knock on the side.";
-                        document.getElementById("startBtn").style.display = "none";
-                    } else {
-                        alert("Permission denied.");
-                    }
-                })
-                .catch(console.error);
+                       initGame();
+                    } else { alert("Permission needed to play."); }
+                });
         } else {
-            // Non-iOS 13+ devices (Typical Android)
-            window.addEventListener('devicemotion', handleMotion);
-            document.getElementById("status").innerText = "Sensors Active! Knock on the side.";
-            document.getElementById("startBtn").style.display = "none";
+            // Android standard
+            initGame();
         }
+    }
+
+    function initGame() {
+        window.addEventListener('devicemotion', handleMotion);
+        isPlaying = true;
+        score = 0;
+        scoreDisplay.innerText = "Score: " + score;
+        startBtn.style.display = 'none';
+        statusText.innerText = "Game Active! Knock side to hit.";
+        // Start movement loop
+        cancelAnimationFrame(animationFrameId); // ensure no duplicate loops
+        gameLoop();
     }
 
     function handleMotion(event) {
-        // We use acceleration (without gravity) to detect the impact only
-        const acc = event.acceleration;
-        if (!acc) return; // Sensor not ready
+        if (!isPlaying) return;
 
-        const x = acc.x || 0;
-        const y = acc.y || 0;
-        const z = acc.z || 0;
-
-        // Update Display
-        document.getElementById('x-val').innerText = x.toFixed(1);
-        document.getElementById('y-val').innerText = y.toFixed(1);
-        document.getElementById('z-val').innerText = z.toFixed(1);
-
-        // Detect Knock
-        // We check if the absolute value of X (side axis) exceeds threshold
-        // We also use a cooldown (500ms) so one knock doesn't register 5 times
+        // Use X acceleration for side knocks
+        const xAcc = event.acceleration.x || 0;
         const now = Date.now();
-        if (now - lastKnockTime > 500) {
-            
-            // Check for Side Knock (High X value)
-            if (Math.abs(x) > KNOCK_THRESHOLD) {
-                registerKnock("SIDE (X-Axis)", x);
-            } 
-            // Optional: Check for Top/Bottom Knock (High Y value)
-            else if (Math.abs(y) > KNOCK_THRESHOLD) {
-                registerKnock("VERTICAL (Y-Axis)", y);
-            }
+
+        // Check threshold and cooldown
+        if (Math.abs(xAcc) > KNOCK_THRESHOLD && now - lastKnockTime > KNOCK_COOLDOWN) {
+            lastKnockTime = now;
+            swingHammer();
         }
     }
 
-    function registerKnock(type, force) {
-        lastKnockTime = Date.now();
-        
-        // Visual Flash
-        document.body.classList.add('knocked');
-        setTimeout(() => document.body.classList.remove('knocked'), 100);
 
-        // Log entry
-        const log = document.getElementById('log');
-        const entry = document.createElement('div');
-        entry.innerText = `💥 ${type} knock detected! Force: ${force.toFixed(1)}`;
-        log.prepend(entry);
+    // --- Core Gameplay Logic ---
+    function swingHammer() {
+        // 1. Visual Feedback (Hammer Swing Animation)
+        hammer.classList.add('swinging');
+        setTimeout(() => hammer.classList.remove('swinging'), 150);
+
+        // 2. Hit Detection
+        // We define the "hit zone" as the center 20% of the container
+        const safeZoneStart = (containerWidth / 2) - (spriteWidth / 2);
+        const safeZoneEnd = (containerWidth / 2) + (spriteWidth / 2);
+        
+        // Calculate the center point of the moving sprite
+        const spriteCenter = spritePos + (spriteWidth / 2);
+
+        // Check if sprite center is within the safe zone
+        if (spriteCenter >= safeZoneStart && spriteCenter <= safeZoneEnd) {
+            // SUCCESS HIT
+            score++;
+            scoreDisplay.innerText = "Score: " + score;
+            // Flash green
+            sprite.classList.add('hit-success');
+            setTimeout(() => sprite.classList.remove('hit-success'), 200);
+        } else {
+            // MISS
+            // Flash grey indicating a miss
+            sprite.classList.add('hit-fail');
+            setTimeout(() => sprite.classList.remove('hit-fail'), 200);
+        }
     }
 </script>
-
 </body>
 </html>
