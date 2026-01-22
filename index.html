@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Side Knock Detector</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+            transition: background-color 0.1s;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { margin-top: 0; }
+        .data-box {
+            font-family: monospace;
+            font-size: 1.2rem;
+            margin: 10px 0;
+            padding: 10px;
+            background: #eee;
+            border-radius: 8px;
+        }
+        #status { color: #666; font-style: italic; margin-bottom: 20px;}
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .knock-log {
+            margin-top: 20px;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+            border-top: 2px solid #ddd;
+            padding-top: 10px;
+        }
+        .knocked {
+            background-color: #ff4444 !important; /* Red flash on knock */
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Knock Detector</h1>
+    <p id="status">Sensors stopped. Tap Start.</p>
+    
+    <button id="startBtn" onclick="startSensors()">Start Listening</button>
+
+    <div class="data-box">
+        X (Side): <span id="x-val">0</span> m/s²<br>
+        Y (Vertical): <span id="y-val">0</span> m/s²<br>
+        Z (Face): <span id="z-val">0</span> m/s²
+    </div>
+
+    <h3>Event Log:</h3>
+    <div class="knock-log" id="log"></div>
+</div>
+
+<script>
+    // Threshold: How hard you have to knock (m/s^2). 
+    // 15 is usually a firm tap. Increase to 20 if too sensitive.
+    const KNOCK_THRESHOLD = 15; 
+    let lastKnockTime = 0;
+
+    function startSensors() {
+        // Request permission (Required for iOS 13+, good practice for Android)
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            DeviceMotionEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        window.addEventListener('devicemotion', handleMotion);
+                        document.getElementById("status").innerText = "Sensors Active! Knock on the side.";
+                        document.getElementById("startBtn").style.display = "none";
+                    } else {
+                        alert("Permission denied.");
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // Non-iOS 13+ devices (Typical Android)
+            window.addEventListener('devicemotion', handleMotion);
+            document.getElementById("status").innerText = "Sensors Active! Knock on the side.";
+            document.getElementById("startBtn").style.display = "none";
+        }
+    }
+
+    function handleMotion(event) {
+        // We use acceleration (without gravity) to detect the impact only
+        const acc = event.acceleration;
+        if (!acc) return; // Sensor not ready
+
+        const x = acc.x || 0;
+        const y = acc.y || 0;
+        const z = acc.z || 0;
+
+        // Update Display
+        document.getElementById('x-val').innerText = x.toFixed(1);
+        document.getElementById('y-val').innerText = y.toFixed(1);
+        document.getElementById('z-val').innerText = z.toFixed(1);
+
+        // Detect Knock
+        // We check if the absolute value of X (side axis) exceeds threshold
+        // We also use a cooldown (500ms) so one knock doesn't register 5 times
+        const now = Date.now();
+        if (now - lastKnockTime > 500) {
+            
+            // Check for Side Knock (High X value)
+            if (Math.abs(x) > KNOCK_THRESHOLD) {
+                registerKnock("SIDE (X-Axis)", x);
+            } 
+            // Optional: Check for Top/Bottom Knock (High Y value)
+            else if (Math.abs(y) > KNOCK_THRESHOLD) {
+                registerKnock("VERTICAL (Y-Axis)", y);
+            }
+        }
+    }
+
+    function registerKnock(type, force) {
+        lastKnockTime = Date.now();
+        
+        // Visual Flash
+        document.body.classList.add('knocked');
+        setTimeout(() => document.body.classList.remove('knocked'), 100);
+
+        // Log entry
+        const log = document.getElementById('log');
+        const entry = document.createElement('div');
+        entry.innerText = `💥 ${type} knock detected! Force: ${force.toFixed(1)}`;
+        log.prepend(entry);
+    }
+</script>
+
+</body>
+</html>
