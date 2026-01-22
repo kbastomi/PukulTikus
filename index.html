@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Landscape Knock Hammer</title>
     <style>
-        /* Reset and Fullscreen setup */
         body, html {
             margin: 0;
             padding: 0;
@@ -17,7 +16,6 @@
             touch-action: none;
         }
 
-        /* Enforcing Landscape Mode */
         #portrait-warning {
             display: none;
             position: fixed;
@@ -35,7 +33,6 @@
             #game-container { display: none; }
         }
 
-        /* Main Game Area */
         #game-container {
             position: relative;
             width: 100vw;
@@ -46,85 +43,67 @@
         /* --- The Objects --- */
         #target-sprite {
             position: absolute;
-            bottom: 15%;
+            bottom: 10%; /* Adjusted for image */
             left: 0;
-            width: 60px;
-            height: 40px;
-            background-color: #ff4757;
-            border-radius: 8px 8px 0 0;
-            box-shadow: inset 0 -5px rgba(0,0,0,0.2);
+            width: 80px; /* Set size for image */
+            height: auto;
             z-index: 1;
         }
 
         #hammer-assembly {
             position: absolute;
             left: 50%;
-            top: 15%; 
+            top: 5%; /* Start higher */
             transform: translateX(-50%);
             z-index: 5;
-            transition: top 0.15s ease-in; 
+            transition: top 0.15s ease-in;
+            width: 100px; /* Set size for image */
+            height: auto;
         }
 
-        .hammer-striking { top: 72% !important; }
+        /* Adjusted strike position for image */
+        .hammer-striking { top: 65% !important; }
 
-        .hammer-head {
-            width: 80px; height: 40px;
-            background: #888; border-radius: 4px; border: 3px solid #555;
-            position: relative; top: 40px;
-        }
-        .hammer-handle {
-            width: 20px; height: 60px;
-            background: #8B4513; margin: 0 auto; border-radius: 4px;
-        }
-
-        /* --- UI --- */
         #ui-layer {
             position: absolute; top: 10px; left: 10px; color: white; z-index: 10;
             text-shadow: 1px 1px 3px black;
         }
         #score-board { font-size: 2rem; font-weight: bold; }
 
-        /* MODIFIED OVERLAY: Content pushed to top */
         #start-overlay {
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%;
-            background: rgba(0,0,0,0.85); 
-            color: white; 
-            display: flex;
-            flex-direction: column; 
-            /* Changed from center to flex-start to push items up */
-            justify-content: flex-start; 
-            align-items: center; 
-            z-index: 50;
-            padding-top: 10vh; /* Add some breathing room at the top */
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); color: white; display: flex;
+            flex-direction: column; justify-content: flex-start; align-items: center;
+            z-index: 50; padding-top: 10vh;
         }
         
         #start-overlay h1 { margin-bottom: 10px; margin-top: 0; }
         #start-overlay p { margin: 5px 0; color: #ccc; }
 
-        /* BIGGER, HIGHER BUTTON */
         button {
-            background-color: #3742fa; 
-            color: white; 
-            border: none; 
-            padding: 20px 60px; /* Wider hit area */
-            font-size: 1.5rem; 
-            font-weight: bold;
-            border-radius: 12px; 
-            margin-top: 30px; /* Space from text */
-            box-shadow: 0 4px 15px rgba(55, 66, 250, 0.4);
-            cursor: pointer;
+            background-color: #3742fa; color: white; border: none;
+            padding: 20px 60px; font-size: 1.5rem; font-weight: bold;
+            border-radius: 12px; margin-top: 30px;
+            box-shadow: 0 4px 15px rgba(55, 66, 250, 0.4); cursor: pointer;
         }
 
-        /* Hit Feedback Animations */
+        /* Screen Flash Effect */
+        #screen-flash {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255, 0, 0, 0.6);
+            z-index: 90; /* Below UI, above game */
+            pointer-events: none; /* Let clicks pass through */
+            opacity: 0;
+            transition: opacity 0.1s ease-out;
+        }
+        .flash-active { opacity: 1 !important; }
+
+        /* Hit Feedback Animations (Optional on sprite) */
         .hit-success-anim { animation: flashGreen 0.3s; }
         .hit-fail-anim { animation: flashGrey 0.3s; }
 
-        @keyframes flashGreen { 0% {background:#ff4757;} 50% {background:#2ed573; transform: scale(0.9);} 100% {background:#ff4757; transform: scale(1);}}
-        @keyframes flashGrey { 0% {background:#ff4757;} 50% {background:#7f8c8d; opacity: 0.5;} 100% {background:#ff4757; opacity: 1;}}
+        @keyframes flashGreen { 0% {} 50% {transform: scale(0.9);} 100% {transform: scale(1);}}
+        @keyframes flashGrey { 0% {} 50% {opacity: 0.5;} 100% {opacity: 1;}}
     </style>
 </head>
 <body>
@@ -134,17 +113,16 @@
         <h2>Please Rotate Phone</h2>
     </div>
 
+    <div id="screen-flash"></div>
+
     <div id="game-container">
         <div id="ui-layer">
             <div id="score-board">Score: 0</div>
         </div>
 
-        <div id="hammer-assembly">
-            <div class="hammer-handle"></div>
-            <div class="hammer-head"></div>
-        </div>
+        <img id="hammer-assembly" src="image_0.png" alt="Hammer">
         
-        <div id="target-sprite"></div>
+        <img id="target-sprite" src="image_1.png" alt="Mouse">
 
         <div id="start-overlay">
             <h1>Hammer Strike!</h1>
@@ -175,6 +153,7 @@
     const gameContainer = document.getElementById('game-container');
     const scoreDisplay = document.getElementById('score-board');
     const startOverlay = document.getElementById('start-overlay');
+    const screenFlash = document.getElementById('screen-flash');
 
     function gameLoop() {
         if (!isPlaying) return;
@@ -244,13 +223,19 @@
 
     function checkCollision() {
         const screenCenter = containerWidth / 2;
-        const safeZoneStart = screenCenter - 40; 
-        const safeZoneEnd = screenCenter + 40;
+        // Hit zone is width of hammer (approx 100px)
+        const safeZoneStart = screenCenter - 50; 
+        const safeZoneEnd = screenCenter + 50;
         const spriteCenter = spritePos + (spriteWidth / 2);
 
         if (spriteCenter >= safeZoneStart && spriteCenter <= safeZoneEnd) {
             score++;
             scoreDisplay.innerText = "Score: " + score;
+            
+            // Trigger Screen Flash
+            screenFlash.classList.add('flash-active');
+            setTimeout(() => screenFlash.classList.remove('flash-active'), 100);
+
             applyFeedback('hit-success-anim');
         } else {
             applyFeedback('hit-fail-anim');
